@@ -87,15 +87,24 @@ var wasIntersecting = false;
 var rect1 = new Rect(10, 10, 50, 50);
 var rect2 = new Rect(60, 100, 160, 220);
 
-var snapRect1 = new Rect(0, 0, 200, 200);
-var snapRect2 = new Rect(300, 300, 200, 200);
-var snapRect2 = new Rect(0, 300, 200, 200);
-var snapRect2 = new Rect(300, 0, 200, 200);
-var snapRects = [snapRect1, snapRect2];
+var snapRect1 = new Rect(0, 0, 300, 200);
+var snapRect2 = new Rect(700, 300, 300, 200);
+var snapRect3 = new Rect(0, 300, 300, 200);
+var snapRect4 = new Rect(700, 0, 300, 200);
+var snapRects = [snapRect1, snapRect2, snapRect3, snapRect4];
 
-var circle = new Circle(300, 300, 50, 1.0);
+var circle = new Circle(snapRect1.center().x, snapRect1.center().y, 50, 1.0);
+
+var pluckEnabled = true;
 
 var home = snapRect1;
+var originalHome = home;    ///< The FIRST home the user dragged off of, this mouse click
+                            ///< Cleared when the user leaves the originalHome
+
+var hovering = false;
+var hoverExpansion = 0;
+
+var dropped = false;
 
 /** Draw the specified rect on screen with specified color. */
 function drawRect(rect, color) {
@@ -103,12 +112,24 @@ function drawRect(rect, color) {
     context.fillRect(rect.x, rect.y, rect.width, rect.height);
 }
 
-function drawCircle(circle, color) {
+function drawCircle(circle, color, expansion, shadow) {
+    context.save();
     context.beginPath();
+
+    if (shadow) {
+        const alpha = 0.3; + expansion / 8.0;
+        context.shadowColor = "rgba(0, 0, 0, " + alpha + ")";
+        context.shadowBlur = 5;
+        context.shadowOffsetY = 10 + expansion * 5;
+    } else {
+        context.filter = 'blur(2px)';
+    }
+
     context.arc(circle.x, circle.y, 
-                circle.radius, 0, 2*Math.PI, false);
+                circle.radius + expansion, 0, 2*Math.PI, false);
     context.fillStyle = color;
     context.fill();
+    context.restore();
 }
 
 /** 
@@ -145,16 +166,27 @@ function update() {
 
     context.clearRect(0 , 0 , canvas.width, canvas.height);
 
-    if (home != null) {
-        const center = home.center();
-        const homeCirc = new Circle(center.x, center.y, circle.radius, 0.5);
-        drawCircle(homeCirc, 'rgba(255, 255, 255, 0.5)');
+    const MAX_CIRCLE_EXPAND = 3.0;
+
+    if (draggingCircle) {
+        snapRects.forEach(rect => {
+            const homeCirc = new Circle(rect.center().x, rect.center().y + 10, circle.radius, 0.5);
+            drawCircle(homeCirc, 'rgba(255, 255, 255, 0.4)', MAX_CIRCLE_EXPAND - 1.5, false);
+        });
     }
 
-    drawCircle(circle, "rgb(255, 170, 170)");
+    if (!dropped && hovering || draggingCircle) {
+        var hoverExpansionTarget = MAX_CIRCLE_EXPAND
+    } else {
+        var hoverExpansionTarget = 0.0
+    }
+
+    hoverExpansion += (hoverExpansionTarget - hoverExpansion) / 2;
+
+    drawCircle(circle, "rgba(255, 170, 170, 1.0)", hoverExpansion, true);
 
     snapRects.forEach(rect => {
-        drawRect(rect, 'rgba(255, 255, 255, 0.1)');
+        // drawRect(rect, 'rgba(255, 255, 255, 0.1)');
     })
 }
 
@@ -181,6 +213,8 @@ function mouseDownListener(evt) {
         draggingCircle = true;
     }
 
+    originalHome = home;
+
     mouseMoveListener(evt);
 }
 
@@ -191,17 +225,39 @@ function mouseDownListener(evt) {
 function mouseMoveListener(evt) {
     var mousePoint = getCanvasCoords(evt);
 
+    hovering = circleContainsPoint(circle, mousePoint);
+
+    if (dropped && !hovering) { 
+        dropped = false;
+    }
+
     if (draggingCircle) {
         draggingTarget = mousePoint;
+    } else {
+        return;
+    }
+
+    if (originalHome && pluckEnabled) {
+        const pluckiness = 2.0
+        const x = (originalHome.center().x + mousePoint.x) / 2;
+        const y = (originalHome.center().y + mousePoint.y) / 2;
+        draggingTarget = { x: x, y: y };
+
+        if (!rectContainsPoint(originalHome, mousePoint)) {
+            originalHome = null;
+        }
+
+        return;
     }
 
     snapRects.forEach(rect => {
-        if (rect === home) { return; }
-
         if (rectContainsPoint(rect, mousePoint)) {
-            draggingTarget.x = rect.x + rect.width / 2;
-            draggingTarget.y = rect.y + rect.height / 2;
+            draggingTarget = {
+                x: rect.x + rect.width / 2,
+                y: rect.y + rect.height / 2
+            };
             home = rect;
+            originalHome = null;
         }
     })
 }
@@ -212,15 +268,8 @@ function mouseMoveListener(evt) {
  */
 function mouseUpListener(evt) {
     draggingCircle = false;
-    draggingTarget = null;
-
-    var mousePoint = getCanvasCoords(evt);
-
-    snapRects.forEach(rect => {
-        if (rectContainsPoint(rect, mousePoint)) {
-            home = rect;
-        }
-    })
+    draggingTarget = home;
+    dropped = true;
 }
 
 update();
