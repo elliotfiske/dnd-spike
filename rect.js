@@ -7,6 +7,7 @@ function Rect(x, y, width, height) {
     this.y = y;
     this.x2 = function() { return this.x + this.width };
     this.y2 = function() { return this.y + this.height };
+    this.center = function() { return {x: this.x + this.width / 2, y: this.y + this.height / 2}};
     this.height = height;
     this.width = width;
     this.bounceTime = 0;
@@ -21,7 +22,6 @@ function Circle(x, y, radius, alpha) {
     this.y = y;
     this.radius = 40;
     this.alpha = 0.4;
-
 }
 
 /**
@@ -87,9 +87,15 @@ var wasIntersecting = false;
 var rect1 = new Rect(10, 10, 50, 50);
 var rect2 = new Rect(60, 100, 160, 220);
 
-var circle = new Circle(100, 100, 50, 1.0);
+var snapRect1 = new Rect(0, 0, 200, 200);
+var snapRect2 = new Rect(300, 300, 200, 200);
+var snapRect2 = new Rect(0, 300, 200, 200);
+var snapRect2 = new Rect(300, 0, 200, 200);
+var snapRects = [snapRect1, snapRect2];
 
-var circles = [];
+var circle = new Circle(300, 300, 50, 1.0);
+
+var home = snapRect1;
 
 /** Draw the specified rect on screen with specified color. */
 function drawRect(rect, color) {
@@ -123,26 +129,6 @@ function iterateBounciness(rect) {
 }
 
 /**
- * Animate the circles that emanate out from intersections
- */
-function iterateCircles() {
-    for (var ndx = circles.length - 1; ndx >= 0; ndx--) {
-        circles[ndx].radius += 2;
-        circles[ndx].alpha -= 0.03;
-
-        context.beginPath();
-        context.arc(circles[ndx].x, circles[ndx].y, 
-                    circles[ndx].radius, 0, 2*Math.PI, false);
-        context.fillStyle = "rgba(255, 255, 255, " + circles[ndx].alpha + ")";
-        context.fill();
-
-        if (circles[ndx].alpha < 0) {
-            circles.splice(ndx, 1);
-        }
-    }
-}
-
-/**
  * Main animation loop!  Check for intersection, update rectangle
  *  objects, and draw to screen.
  */
@@ -152,11 +138,24 @@ function update() {
     if (draggingCircle && draggingTarget != null) {
         circle.x += (draggingTarget.x - circle.x) / 2;
         circle.y += (draggingTarget.y - circle.y) / 2;
+    } else {
+        circle.x += (home.center().x - circle.x) / 2;
+        circle.y += (home.center().y - circle.y) / 2;
     }
 
     context.clearRect(0 , 0 , canvas.width, canvas.height);
 
+    if (home != null) {
+        const center = home.center();
+        const homeCirc = new Circle(center.x, center.y, circle.radius, 0.5);
+        drawCircle(homeCirc, 'rgba(255, 255, 255, 0.5)');
+    }
+
     drawCircle(circle, "rgb(255, 170, 170)");
+
+    snapRects.forEach(rect => {
+        drawRect(rect, 'rgba(255, 255, 255, 0.1)');
+    })
 }
 
 /**
@@ -194,9 +193,17 @@ function mouseMoveListener(evt) {
 
     if (draggingCircle) {
         draggingTarget = mousePoint;
-        // draggingTarget.x -= draggingRect.width / 2;
-        // draggingTarget.y -= draggingRect.height / 2;
     }
+
+    snapRects.forEach(rect => {
+        if (rect === home) { return; }
+
+        if (rectContainsPoint(rect, mousePoint)) {
+            draggingTarget.x = rect.x + rect.width / 2;
+            draggingTarget.y = rect.y + rect.height / 2;
+            home = rect;
+        }
+    })
 }
 
 /**
@@ -204,8 +211,16 @@ function mouseMoveListener(evt) {
  *  drag rectangle to null.
  */
 function mouseUpListener(evt) {
-    draggingTarget = null;
     draggingCircle = false;
+    draggingTarget = null;
+
+    var mousePoint = getCanvasCoords(evt);
+
+    snapRects.forEach(rect => {
+        if (rectContainsPoint(rect, mousePoint)) {
+            home = rect;
+        }
+    })
 }
 
 update();
